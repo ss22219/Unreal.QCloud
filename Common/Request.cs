@@ -6,19 +6,60 @@ using System.IO;
 using System.Net.Security;
 using System.Web;
 using Unreal.QCloud;
+using Unreal.QCloud.Api;
+using System.Threading.Tasks;
 
 namespace Unreal.QCloud.Common
 {
-    enum HttpMethod { Get, Post};
+    enum HttpMethod { Get, Post };
     /// <summary>
     /// 请求调用类
     /// </summary>
     class Request
     {
         HttpWebRequest request;
-  
-        public string SendRequest(string url, ref Dictionary<string, object> data, HttpMethod requestMethod,
-            ref Dictionary<string, string> header, int timeOut, string localPath = null, long offset = -1, int sliceSize = 0)
+        public async Task<byte[]> DownloadRequest(string url, Dictionary<string, string> header, int timeOut)
+        {
+            try
+            {
+                System.Net.ServicePointManager.Expect100Continue = false;
+
+                request = (HttpWebRequest)HttpWebRequest.Create(url);
+                request.Method = "GET";
+                request.Accept = CosDefaultValue.ACCEPT;
+                request.KeepAlive = true;
+                request.UserAgent = CosDefaultValue.USER_AGENT_VERSION;
+                request.Timeout = timeOut;
+                foreach (var key in header.Keys)
+                {
+                    if (key == "Content-Type")
+                    {
+                        request.ContentType = header[key];
+                    }
+                    else
+                    {
+                        request.Headers.Add(key, header[key]);
+                    }
+                }
+                var response = request.GetResponse();
+                var stream = response.GetResponseStream();
+                var bytes = new byte[stream.Length];
+                await response.GetResponseStream().ReadAsync(bytes, 0, bytes.Length);
+                return bytes;
+            }
+            catch (WebException we)
+            {
+                throw we;
+            }
+            catch (Exception e)
+            {
+                throw e;
+            }
+        }
+
+
+        public async Task<QCloudResponse> SendRequest(string url, Dictionary<string, object> data, HttpMethod requestMethod,
+            Dictionary<string, string> header, int timeOut, Stream stream = null, long offset = -1, int sliceSize = 0)
         {
             try
             {
@@ -42,7 +83,7 @@ namespace Unreal.QCloud.Common
                 request.Timeout = timeOut;
                 foreach (var key in header.Keys)
                 {
-                    if(key == "Content-Type")
+                    if (key == "Content-Type")
                     {
                         request.ContentType = header[key];
                     }
@@ -54,87 +95,87 @@ namespace Unreal.QCloud.Common
                 if (requestMethod == HttpMethod.Post)
                 {
                     request.Method = requestMethod.ToString().ToUpper();
-                    var memStream = new MemoryStream();
-                    if (header.ContainsKey("Content-Type") && header["Content-Type"] == "application/json")
+                    using (var memStream = new MemoryStream())
                     {
-                        var json = JsonHelper.ToJSON(data);
-                        var jsonByte = Encoding.GetEncoding("utf-8").GetBytes(json.ToString());
-                        memStream.Write(jsonByte, 0, jsonByte.Length);
-                    }
-                    else
-                    {
-                        var boundary = "---------------" + DateTime.Now.Ticks.ToString("x");
-                        var beginBoundary = Encoding.ASCII.GetBytes("\r\n--" + boundary + "\r\n");
-                        var endBoundary = Encoding.ASCII.GetBytes("\r\n--" + boundary + "--\r\n");
-                        request.ContentType = "multipart/form-data; boundary=" + boundary;                       
-
-                        var strBuf = new StringBuilder();
-                        foreach (var key in data.Keys)
+                        if (header.ContainsKey("Content-Type") && header["Content-Type"] == "application/json")
                         {
-                            strBuf.Append("\r\n--" + boundary + "\r\n");
-                            strBuf.Append("Content-Disposition: form-data; name=\"" + key + "\"\r\n\r\n");
-                            strBuf.Append(data[key].ToString());
+                            var json = JsonHelper.ToJSON(data);
+                            var jsonByte = Encoding.GetEncoding("utf-8").GetBytes(json.ToString());
+                            memStream.Write(jsonByte, 0, jsonByte.Length);
                         }
-                        var paramsByte = Encoding.GetEncoding("utf-8").GetBytes(strBuf.ToString());
-                        memStream.Write(paramsByte, 0, paramsByte.Length);
-
-
-
-                        if (localPath != null)
+                        else
                         {
-                            memStream.Write(beginBoundary, 0, beginBoundary.Length);
-                            var fileInfo = new FileInfo(localPath);
-                            var fileStream = new FileStream(localPath, FileMode.Open, FileAccess.Read);
+                            var boundary = "---------------" + DateTime.Now.Ticks.ToString("x");
+                            var beginBoundary = Encoding.ASCII.GetBytes("\r\n--" + boundary + "\r\n");
+                            var endBoundary = Encoding.ASCII.GetBytes("\r\n--" + boundary + "--\r\n");
+                            request.ContentType = "multipart/form-data; boundary=" + boundary;
 
-                            const string filePartHeader =
-                                "Content-Disposition: form-data; name=\"fileContent\"; filename=\"{0}\"\r\n" +
-                                "Content-Type: application/octet-stream\r\n\r\n";
-                            var headerText = string.Format(filePartHeader, fileInfo.Name);
-                            var headerbytes = Encoding.UTF8.GetBytes(headerText);
-                            memStream.Write(headerbytes, 0, headerbytes.Length);
-
-                            if (offset == -1)
+                            var strBuf = new StringBuilder();
+                            foreach (var key in data.Keys)
                             {
-                                var buffer = new byte[1024];
-                                int bytesRead;
-                                while ((bytesRead = fileStream.Read(buffer, 0, buffer.Length)) != 0)
+                                strBuf.Append("\r\n--" + boundary + "\r\n");
+                                strBuf.Append("Content-Disposition: form-data; name=\"" + key + "\"\r\n\r\n");
+                                strBuf.Append(data[key].ToString());
+                            }
+                            var paramsByte = Encoding.GetEncoding("utf-8").GetBytes(strBuf.ToString());
+                            memStream.Write(paramsByte, 0, paramsByte.Length);
+
+
+
+                            if (stream != null)
+                            {
+                                stream.Seek(0, SeekOrigin.Begin);
+                                memStream.Write(beginBoundary, 0, beginBoundary.Length);
+
+                                const string filePartHeader =
+                                    "Content-Disposition: form-data; name=\"fileContent\"; filename=\"{0}\"\r\n" +
+                                    "Content-Type: application/octet-stream\r\n\r\n";
+                                var headerText = string.Format(filePartHeader, "tmp");
+                                var headerbytes = Encoding.UTF8.GetBytes(headerText);
+                                memStream.Write(headerbytes, 0, headerbytes.Length);
+
+                                if (offset == -1)
                                 {
+                                    var buffer = new byte[1024];
+                                    int bytesRead;
+                                    while ((bytesRead = stream.Read(buffer, 0, buffer.Length)) != 0)
+                                    {
+                                        memStream.Write(buffer, 0, bytesRead);
+                                    }
+                                }
+                                else
+                                {
+                                    var buffer = new byte[sliceSize];
+                                    int bytesRead;
+                                    stream.Seek(offset, SeekOrigin.Begin);
+                                    bytesRead = stream.Read(buffer, 0, buffer.Length);
                                     memStream.Write(buffer, 0, bytesRead);
                                 }
                             }
-                            else
-                            {
-                                var buffer = new byte[sliceSize];
-                                int bytesRead;
-                                fileStream.Seek(offset, SeekOrigin.Begin);
-                                bytesRead = fileStream.Read(buffer, 0, buffer.Length);
-                                memStream.Write(buffer, 0, bytesRead);
-                            }
-                            fileStream.Close();
+                            memStream.Write(endBoundary, 0, endBoundary.Length);
                         }
-                        memStream.Write(endBoundary, 0, endBoundary.Length);
-                    }
-                    request.ContentLength = memStream.Length;
-                    var requestStream = request.GetRequestStream();
-                    memStream.Position = 0;
-                    var tempBuffer = new byte[memStream.Length];
-                    memStream.Read(tempBuffer, 0, tempBuffer.Length);
-                    memStream.Close();
+                        request.ContentLength = memStream.Length;
+                        var requestStream = request.GetRequestStream();
+                        memStream.Position = 0;
+                        var tempBuffer = new byte[memStream.Length];
+                        memStream.Read(tempBuffer, 0, tempBuffer.Length);
 
-                    requestStream.Write(tempBuffer, 0, tempBuffer.Length);
-                    requestStream.Close();
+                        await requestStream.WriteAsync(tempBuffer, 0, tempBuffer.Length);
+                        requestStream.Close();
+                    }
+
 
                     //Console.WriteLine(strBuf.ToString());
                 }
 
                 //Console.WriteLine(request.ContentType.ToString());
-                
+
 
                 var response = request.GetResponse();
                 using (var s = response.GetResponseStream())
                 {
                     var reader = new StreamReader(s, Encoding.UTF8);
-                    return reader.ReadToEnd();
+                    return JsonHelper.Deserialize<QCloudResponse>(await reader.ReadToEndAsync());
                 }
             }
             catch (WebException we)
@@ -144,7 +185,7 @@ namespace Unreal.QCloud.Common
                     using (var s = we.Response.GetResponseStream())
                     {
                         var reader = new StreamReader(s, Encoding.UTF8);
-                        return reader.ReadToEnd();
+                        return JsonHelper.Deserialize<QCloudResponse>(await reader.ReadToEndAsync());
                     }
                 }
                 else

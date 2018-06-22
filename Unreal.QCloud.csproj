@@ -44,6 +44,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Api\CosCloud.cs" />
+    <Compile Include="Api\QCloudResponse.cs" />
     <Compile Include="Common\CosParameters.cs" />
     <Compile Include="Common\CosSha1Pure.cs" />
     <Compile Include="Common\Extension.cs" />
@@ -53,6 +54,9 @@
     <Compile Include="Common\Sign.cs" />
     <Compile Include="JsonHelper.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="nuget.nuspec" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>

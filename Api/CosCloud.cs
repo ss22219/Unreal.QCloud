@@ -7,12 +7,20 @@ using Unreal.QCloud.Util;
 using System.Web;
 using System.IO;
 using Unreal.QCloud;
+using Unreal.QCloud.Api;
+using System.Threading.Tasks;
 
 namespace Unreal.QCloud.Api
 {
     public class CosCloud
     {
-        private string cosApiUrl { get { return $"http://{region}.file.myqcloud.com/files/v2/"; } }
+        private string cosApiUrl
+        {
+            get
+            {
+                return $"http://{region}.file.myqcloud.com/files/v2/";
+            }
+        }
         //文件大于8M时采用分片上传,小于等于8M时采用单文件上传
         const int SLICE_UPLOAD_FILE_SIZE = 8 * 1024 * 1024;
         //用户计算用户签名超时时间
@@ -25,6 +33,16 @@ namespace Unreal.QCloud.Api
         private string secretKey;
         private int timeOut;
         private Request httpRequest;
+
+        public async Task<byte[]> DownloadFile(string bucketName, string remotePath)
+        {
+            var url = $"http://{bucketName}-{appId}.cos{region}.myqcloud.com{remotePath}";
+            var sign = Sign.SignatureOnce(appId, secretId, secretKey, (remotePath.StartsWith("/") ? "" : "/") + remotePath, bucketName);
+            var header = new Dictionary<string, string>();
+            header.Add(CosParameters.Authorization, sign);
+            header.Add(CosParameters.PARA_CONTENT_TYPE, "application/json");
+            return await httpRequest.DownloadRequest(url, header, timeOut);
+        }
 
         /// <summary>
         /// CosCloud 构造方法
@@ -51,15 +69,15 @@ namespace Unreal.QCloud.Api
         /// <param name="parameterDic">可选参数Dictionary</param>
         /// 包含如下可选参数：biz_attr:目录属性
         /// <returns></returns>
-        public string UpdateFolder(string bucketName, string remotePath, Dictionary<string, string> parameterDic = null)
+        public async Task<QCloudResponse> UpdateFolder(string bucketName, string remotePath, Dictionary<string, string> parameterDic = null)
         {
             remotePath = HttpUtils.StandardizationRemotePath(remotePath);
             if (String.IsNullOrEmpty(remotePath))
             {
-                return constructResult(ERRORCode.ERROR_CODE_PARAMETER_ERROE, "ERROR_CODE_PARAMETER_ERROE,remotePath illegal");
+                return new QCloudResponse(ERRORCode.ERROR_CODE_PARAMETER_ERROE, "ERROR_CODE_PARAMETER_ERROE,remotePath illegal");
             }
 
-            return UpdateFile(bucketName, remotePath, parameterDic);
+            return await UpdateFile(bucketName, remotePath, parameterDic);
         }
 
         /// <summary>
@@ -79,7 +97,7 @@ namespace Unreal.QCloud.Api
         /// Content-Language:
         /// x-cos-meta-: 以"x-cos-meta-"为前缀的参数
         /// <returns></returns>
-        public string UpdateFile(string bucketName, string remotePath, Dictionary<string, string> parameterDic = null)
+        public async Task<QCloudResponse> UpdateFile(string bucketName, string remotePath, Dictionary<string, string> parameterDic = null)
         {
             var url = generateURL(bucketName, remotePath);
             var data = new Dictionary<string, object>();
@@ -108,7 +126,7 @@ namespace Unreal.QCloud.Api
             var header = new Dictionary<string, string>();
             header.Add(CosParameters.Authorization, sign);
             header.Add(CosParameters.PARA_CONTENT_TYPE, "application/json");
-            return httpRequest.SendRequest(url, ref data, HttpMethod.Post, ref header, timeOut);
+            return await httpRequest.SendRequest(url, data, HttpMethod.Post, header, timeOut);
         }
 
         /// <summary>
@@ -117,15 +135,15 @@ namespace Unreal.QCloud.Api
         /// <param name="bucketName">bucket名称</param>
         /// <param name="remotePath">远程文件夹路径</param>
         /// <returns></returns>
-        public string DeleteFolder(string bucketName, string remotePath)
+        public async Task<QCloudResponse> DeleteFolder(string bucketName, string remotePath)
         {
             remotePath = HttpUtils.StandardizationRemotePath(remotePath);
             if (String.IsNullOrEmpty(remotePath))
             {
-                return constructResult(ERRORCode.ERROR_CODE_PARAMETER_ERROE, "ERROR_CODE_PARAMETER_ERROE,remotePath illegal");
+                return new QCloudResponse(ERRORCode.ERROR_CODE_PARAMETER_ERROE, "ERROR_CODE_PARAMETER_ERROE,remotePath illegal");
             }
 
-            return DeleteFile(bucketName, remotePath);
+            return await DeleteFile(bucketName, remotePath);
         }
 
         /// <summary>
@@ -134,7 +152,7 @@ namespace Unreal.QCloud.Api
         /// <param name="bucketName">bucket名称</param>
         /// <param name="remotePath">远程文件路径</param>
         /// <returns></returns>
-        public string DeleteFile(string bucketName, string remotePath)
+        public async Task<QCloudResponse> DeleteFile(string bucketName, string remotePath)
         {
             var url = generateURL(bucketName, remotePath);
             var data = new Dictionary<string, object>();
@@ -144,7 +162,7 @@ namespace Unreal.QCloud.Api
             header.Add("Authorization", sign);
             header.Add("Content-Type", "application/json");
 
-            return httpRequest.SendRequest(url, ref data, HttpMethod.Post, ref header, timeOut);
+            return await httpRequest.SendRequest(url, data, HttpMethod.Post, header, timeOut);
         }
 
         /// <summary>
@@ -153,15 +171,15 @@ namespace Unreal.QCloud.Api
         /// <param name="bucketName">bucket名称</param>
         /// <param name="remotePath">远程文件夹路径</param>
         /// <returns></returns>
-        public string GetFolderStat(string bucketName, string remotePath)
+        public async Task<QCloudResponse> GetFolderStat(string bucketName, string remotePath)
         {
             remotePath = HttpUtils.StandardizationRemotePath(remotePath);
             if (String.IsNullOrEmpty(remotePath))
             {
-                return constructResult(ERRORCode.ERROR_CODE_PARAMETER_ERROE, "ERROR_CODE_PARAMETER_ERROE,remotePath illegal");
+                return new QCloudResponse(ERRORCode.ERROR_CODE_PARAMETER_ERROE, "ERROR_CODE_PARAMETER_ERROE,remotePath illegal");
             }
 
-            return GetFileStat(bucketName, remotePath);
+            return await GetFileStat(bucketName, remotePath);
         }
 
         /// <summary>
@@ -170,7 +188,7 @@ namespace Unreal.QCloud.Api
         /// <param name="bucketName">bucket名称</param>
         /// <param name="remotePath">远程文件路径</param>
         /// <returns></returns>
-        public string GetFileStat(string bucketName, string remotePath)
+        public async Task<QCloudResponse> GetFileStat(string bucketName, string remotePath)
         {
             var url = generateURL(bucketName, remotePath);
             var data = new Dictionary<string, object>();
@@ -179,7 +197,7 @@ namespace Unreal.QCloud.Api
             var sign = Sign.Signature(appId, secretId, secretKey, expired, bucketName);
             var header = new Dictionary<string, string>();
             header.Add("Authorization", sign);
-            return httpRequest.SendRequest(url, ref data, HttpMethod.Get, ref header, timeOut);
+            return await httpRequest.SendRequest(url, data, HttpMethod.Get, header, timeOut);
         }
 
         /// <summary>
@@ -190,7 +208,7 @@ namespace Unreal.QCloud.Api
         /// <param name="parameterDic">参数Dictionary</param>
         /// 包含如下可选参数：biz_attr:目录属性
         /// <returns></returns>
-        public string CreateFolder(string bucketName, string remotePath, Dictionary<string, string> parameterDic = null)
+        public async Task<QCloudResponse> CreateFolder(string bucketName, string remotePath, Dictionary<string, string> parameterDic = null)
         {
             remotePath = HttpUtils.StandardizationRemotePath(remotePath);
             if (String.IsNullOrEmpty(remotePath))
@@ -207,7 +225,7 @@ namespace Unreal.QCloud.Api
             var header = new Dictionary<string, string>();
             header.Add("Authorization", sign);
             header.Add("Content-Type", "application/json");
-            return httpRequest.SendRequest(url, ref data, HttpMethod.Post, ref header, timeOut);
+            return await httpRequest.SendRequest(url, data, HttpMethod.Post, header, timeOut);
         }
 
         /// <summary>
@@ -222,7 +240,7 @@ namespace Unreal.QCloud.Api
         /// context:透传字段,用于翻页,前端不需理解,需要往后翻页则透传回来
         /// prefix:读取文件/文件夹前缀
         /// <returns></returns>
-        public string GetFolderList(string bucketName, string remotePath, Dictionary<string, string> parameterDic)
+        public async Task<QCloudResponse> GetFolderList(string bucketName, string remotePath, Dictionary<string, string> parameterDic)
         {
             string prefix = "";
             if (parameterDic != null && parameterDic.ContainsKey(CosParameters.PARA_PREFIX))
@@ -251,29 +269,11 @@ namespace Unreal.QCloud.Api
             var sign = Sign.Signature(appId, secretId, secretKey, expired, bucketName);
             var header = new Dictionary<string, string>();
             header.Add("Authorization", sign);
-            return httpRequest.SendRequest(url, ref data, HttpMethod.Get, ref header, timeOut);
+            return await httpRequest.SendRequest(url, data, HttpMethod.Get, header, timeOut);
         }
 
-        /// <summary>
-        /// 文件上传
-        /// 说明: 根据文件大小判断使用单文件上传还是分片上传,当文件大于8M时,内部会进行分片上传,可以携带分片大小sliceSize
-        /// 其中分片上传使用SliceUploadInit SliceUploadData SliceUploadFinihs
-        /// </summary>
-        /// <param name="bucketName">bucket名称</param>
-        /// <param name="remotePath">远程文件路径</param>
-        /// <param name="localPath">本地文件路径</param>
-        /// <param name="parameterDic">参数Dictionary</param>
-        /// 包含如下可选参数
-        /// bizAttribute：文件属性
-        /// insertOnly： 0:同名文件覆盖, 1:同名文件不覆盖,默认1
-        /// sliceSize: 分片大小，可选取值为:64*1024 512*1024，1*1024*1024，2*1024*1024，3*1024*1024
-        /// <returns></returns>
-        public string UploadFile(string bucketName, string remotePath, string localPath, Dictionary<string, string> parameterDic = null)
+        public async Task<QCloudResponse> UploadFile(string bucketName, string remotePath, Stream stream, Dictionary<string, string> parameterDic = null)
         {
-            if (!File.Exists(localPath))
-            {
-                return constructResult(ERRORCode.ERROR_CODE_FILE_NOT_EXIST, "local file not exist");
-            }
 
             string bizAttribute = "";
             if (parameterDic != null && parameterDic.ContainsKey(CosParameters.PARA_BIZ_ATTR))
@@ -289,15 +289,14 @@ namespace Unreal.QCloud.Api
                 catch (Exception e)
                 {
                     Console.WriteLine(e.Message);
-                    return constructResult(ERRORCode.ERROR_CODE_PARAMETER_ERROE, "parameter insertOnly value invalidate");
+                    return new QCloudResponse(ERRORCode.ERROR_CODE_PARAMETER_ERROE, "parameter insertOnly value invalidate");
                 }
             }
 
-
-            var fileSize = new FileInfo(localPath).Length;
+            var fileSize = stream.Length;
             if (fileSize <= SLICE_UPLOAD_FILE_SIZE)
             {
-                return Upload(bucketName, remotePath, localPath, bizAttribute, insertOnly);
+                return await Upload(bucketName, remotePath, stream, bizAttribute, insertOnly);
             }
             else
             {
@@ -310,7 +309,7 @@ namespace Unreal.QCloud.Api
                     Console.WriteLine("slice size:" + sliceSize);
                 }
                 int slice_size = getSliceSize(sliceSize);
-                return SliceUploadFile(bucketName, remotePath, localPath, bizAttribute, slice_size, insertOnly);
+                return await SliceUploadFile(bucketName, remotePath, stream, bizAttribute, slice_size, insertOnly);
             }
         }
 
@@ -321,7 +320,7 @@ namespace Unreal.QCloud.Api
         /// <param name="bucketName">bucket名称</param>
         /// <param name="remotePath">目标路径</param>
         /// <returns></returns>
-        public string UploadSliceList(string bucketName, string remotePath)
+        public async Task<QCloudResponse> UploadSliceList(string bucketName, string remotePath)
         {
             var url = generateURL(bucketName, remotePath);
             var data = new Dictionary<string, object>();
@@ -332,7 +331,7 @@ namespace Unreal.QCloud.Api
             var sign = Sign.Signature(appId, secretId, secretKey, getExpiredTime(), bucketName);
             header.Add("Authorization", sign);
 
-            return httpRequest.SendRequest(url, ref data, HttpMethod.Post, ref header, timeOut);
+            return await httpRequest.SendRequest(url, data, HttpMethod.Post, header, timeOut);
         }
 
         /// <summary>
@@ -344,11 +343,11 @@ namespace Unreal.QCloud.Api
         /// <param name="biz_attr">biz_attr属性</param>
         /// <param name="insertOnly">同名文件是否覆盖</param>
         /// <returns></returns>
-        public string Upload(string bucketName, string remotePath, string localPath,
+        public async Task<QCloudResponse> Upload(string bucketName, string remotePath, Stream stream,
                                   string bizAttribute = "", int insertOnly = 1)
         {
             var url = generateURL(bucketName, remotePath);
-            var sha1 = SHA1.GetFileSHA1(localPath);
+            var sha1 = SHA1.GetFileSHA1(stream);
             var data = new Dictionary<string, object>();
             data.Add("op", "upload");
             data.Add("sha", sha1);
@@ -359,7 +358,7 @@ namespace Unreal.QCloud.Api
             var sign = Sign.Signature(appId, secretId, secretKey, expired, bucketName);
             var header = new Dictionary<string, string>();
             header.Add("Authorization", sign);
-            return httpRequest.SendRequest(url, ref data, HttpMethod.Post, ref header, timeOut, localPath);
+            return await httpRequest.SendRequest(url, data, HttpMethod.Post, header, timeOut, stream);
         }
 
         /// <summary>
@@ -372,12 +371,12 @@ namespace Unreal.QCloud.Api
         /// <param name="sliceSize">切片大小（字节）,默认为1M</param>
         /// <param name="insertOnly">是否覆盖同名文件</param>
         /// <returns></returns>
-        public string SliceUploadInit(string bucketName, string remotePath, string localPath, string fileSha,
+        public async Task<QCloudResponse> SliceUploadInit(string bucketName, string remotePath, Stream stream, string fileSha,
                                        string bizAttribute = "", int sliceSize = SLICE_SIZE.SLIZE_SIZE_1M, int insertOnly = 1)
         {
             var url = generateURL(bucketName, remotePath);
 
-            var fileSize = new FileInfo(localPath).Length;
+            var fileSize = stream.Length;
 
             var data = new Dictionary<string, object>();
 
@@ -387,7 +386,7 @@ namespace Unreal.QCloud.Api
             data.Add("biz_attr", bizAttribute);
             data.Add("slice_size", sliceSize);
             data.Add("insertOnly", insertOnly);
-            string uploadParts = computeUploadParts(localPath, sliceSize);
+            string uploadParts = computeUploadParts(stream, sliceSize);
             data.Add("uploadparts", uploadParts);
 
 
@@ -399,7 +398,7 @@ namespace Unreal.QCloud.Api
             Console.WriteLine(sign);
             Console.WriteLine(url + appId + " " + secretId + secretId + expired + bucketName);
 
-            return httpRequest.SendRequest(url, ref data, HttpMethod.Post, ref header, timeOut);
+            return await httpRequest.SendRequest(url, data, HttpMethod.Post, header, timeOut);
         }
 
         /// <summary>
@@ -414,7 +413,7 @@ namespace Unreal.QCloud.Api
         /// <param name="sliceSize">切片大小（字节）,默认为1M</param>
         /// <param name="sign">签名</param>
         /// <returns></returns>
-        public string SliceUploadData(string bucketName, string remotePath, string localPath, string fileSha, string session, long offset, int sliceSise, string sign)
+        public async Task<QCloudResponse> SliceUploadData(string bucketName, string remotePath, Stream stream, string fileSha, string session, long offset, int sliceSise, string sign)
         {
             var url = generateURL(bucketName, remotePath);
             var data = new Dictionary<string, object>();
@@ -426,7 +425,7 @@ namespace Unreal.QCloud.Api
 
             var header = new Dictionary<string, string>();
             header.Add("Authorization", sign);
-            return httpRequest.SendRequest(url, ref data, HttpMethod.Post, ref header, timeOut, localPath, offset, sliceSise);
+            return await httpRequest.SendRequest(url, data, HttpMethod.Post, header, timeOut, stream, offset, sliceSise);
         }
 
         /// <summary>
@@ -438,10 +437,10 @@ namespace Unreal.QCloud.Api
         /// <param name="fileSha">文件的sha1</param>
         /// <param name="session">init请求返回的session</param>
         /// <returns></returns>
-        public string SliceUploadFinish(string bucketName, string remotePath, string localPath, string fileSha, string session)
+        public async Task<QCloudResponse> SliceUploadFinish(string bucketName, string remotePath, Stream stream, string fileSha, string session)
         {
             var url = generateURL(bucketName, remotePath);
-            var fileSize = new FileInfo(localPath).Length;
+            var fileSize = stream.Length;
             var data = new Dictionary<string, object>();
 
             data.Add("op", "upload_slice_finish");
@@ -452,11 +451,11 @@ namespace Unreal.QCloud.Api
             var header = new Dictionary<string, string>();
             var sign = Sign.Signature(appId, secretId, secretKey, getExpiredTime(), bucketName);
             header.Add("Authorization", sign);
-            return httpRequest.SendRequest(url, ref data, HttpMethod.Post, ref header, timeOut);
+            return await httpRequest.SendRequest(url, data, HttpMethod.Post, header, timeOut);
         }
 
 
-        private string computeUploadParts(string localPath, int sliceSize)
+        private string computeUploadParts(Stream stream, int sliceSize)
         {
             try
             {
@@ -464,22 +463,20 @@ namespace Unreal.QCloud.Api
                 long offset = 0;    //文件的偏移
                 long totalLen = 0;  //总共读取的字节数
                 int readLen = 0;
-                var fileInfo = new FileInfo(localPath);
-                var fileStream = new FileStream(localPath, FileMode.Open, FileAccess.Read);
                 CosSha1Pure sha = new CosSha1Pure();
                 StringBuilder jsonStr = new StringBuilder();
 
                 jsonStr.Append("[");
 
-                for (int i = 0; offset < fileInfo.Length; ++i, offset += readLen)
+                for (int i = 0; offset < stream.Length; ++i, offset += readLen)
                 {
-                    fileStream.Seek(offset, SeekOrigin.Begin);
-                    readLen = fileStream.Read(buffer, 0, sliceSize);
+                    stream.Seek(offset, SeekOrigin.Begin);
+                    readLen = stream.Read(buffer, 0, sliceSize);
                     totalLen += readLen;
                     string dataSha;
 
                     sha.HashCore(buffer, 0, readLen);
-                    if ((readLen < sliceSize) || (readLen == sliceSize && totalLen == fileInfo.Length))
+                    if ((readLen < sliceSize) || (readLen == sliceSize && totalLen == stream.Length))
                     {
                         //最后一片
                         dataSha = sha.FinalHex();
@@ -526,38 +523,34 @@ namespace Unreal.QCloud.Api
         /// <param name="insertOnly">是否覆盖同名文件</param>
         /// <param name="paras"></param> 
         /// <returns></returns>
-        public string SliceUploadFile(string bucketName, string remotePath, string localPath,
+        public async Task<QCloudResponse> SliceUploadFile(string bucketName, string remotePath, Stream stream,
                                        string bizAttribute = "", int sliceSize = SLICE_SIZE.SLIZE_SIZE_1M, int insertOnly = 1)
         {
-            var fileSha = SHA1.GetFileSHA1(localPath);
-            var fileSize = new FileInfo(localPath).Length;
-            var result = SliceUploadInit(bucketName, remotePath, localPath, fileSha, bizAttribute, sliceSize, insertOnly);
-            var obj = JsonHelper.Deserialize<Dictionary<string, dynamic>>(result);
-            if ((int)obj["code"] != 0)
+            var fileSha = SHA1.GetFileSHA1(stream);
+            var fileSize = stream.Length;
+            var result = await SliceUploadInit(bucketName, remotePath, stream, fileSha, bizAttribute, sliceSize, insertOnly);
+            if (result.code != 0)
             {
                 return result;
             }
 
-            var data = obj["data"];
-            if (data["access_url"] != null)
+            if (result.access_url != null)
             {
-                var accessUrl = data["access_url"];
-                //Console.WriteLine("命中秒传" + accessUrl);
+                var accessUrl = result.access_url;
                 return result;
             }
 
             int retryCount = 0;
-            var session = data["session"].ToString();
-            sliceSize = (int)data["slice_size"];
+            var session = result.session;
+            sliceSize = result.slice_size;
 
             var sign = Sign.Signature(appId, secretId, secretKey, getExpiredTime(), bucketName);
 
             //总共重试三次
             for (long offset = 0; offset < fileSize; offset += sliceSize)
             {
-                result = SliceUploadData(bucketName, remotePath, localPath, fileSha, session, offset, sliceSize, sign);
-                obj = JsonHelper.Deserialize<Dictionary<string, dynamic>>(result);
-                if ((int)obj["code"] != 0)
+                result = await SliceUploadData(bucketName, remotePath, stream, fileSha, session, offset, sliceSize, sign);
+                if (result.code != 0)
                 {
                     if (retryCount < 3)
                     {
@@ -573,7 +566,7 @@ namespace Unreal.QCloud.Api
                 }
             }
 
-            return SliceUploadFinish(bucketName, remotePath, localPath, fileSha, session);
+            return await SliceUploadFinish(bucketName, remotePath, stream, fileSha, session);
         }
 
 
@@ -920,12 +913,9 @@ namespace Unreal.QCloud.Api
         /// 内部方法：构造结果响应
         /// </summary>
         /// <returns></returns>
-        private string constructResult(int code, string message)
+        private QCloudResponse constructResult(int code, string message)
         {
-            var result = new Dictionary<string, object>();
-            result.Add("code", code);
-            result.Add("message", message);
-            return JsonHelper.ToJSON(result);
+            return new QCloudResponse(code, message);
         }
     }
 }
