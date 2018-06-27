@@ -34,16 +34,6 @@ namespace Unreal.QCloud.Api
         private int timeOut;
         private Request httpRequest;
 
-        public async Task<byte[]> DownloadFile(string bucketName, string remotePath)
-        {
-            var url = $"http://{bucketName}-{appId}.cos{region}.myqcloud.com{remotePath}";
-            var sign = Sign.SignatureOnce(appId, secretId, secretKey, (remotePath.StartsWith("/") ? "" : "/") + remotePath, bucketName);
-            var header = new Dictionary<string, string>();
-            header.Add(CosParameters.Authorization, sign);
-            header.Add(CosParameters.PARA_CONTENT_TYPE, "application/json");
-            return await httpRequest.DownloadRequest(url, header, timeOut);
-        }
-
         /// <summary>
         /// CosCloud 构造方法
         /// </summary>
